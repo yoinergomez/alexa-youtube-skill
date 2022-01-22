@@ -207,8 +207,10 @@ def build_video_response(title, output, url):
 
 
 def lambda_handler(event, context):
-    if 'expires' in environ and int(datetime.strftime(datetime.now(), '%Y%m%d')) > int(environ['expires']):
-        return skill_expired()
+    logger.info("EVENT:")
+    logger.info(event)
+    logger.info("CONTEXT:")
+    logger.info(context)
     global strings
     if event['request']['locale'][0:2] == 'fr':
         strings = strings_fr
@@ -250,7 +252,7 @@ def on_intent(event):
     logger.info(event)
     intent_name = event['request']['intent']['name']
     # Dispatch to your skill's intent handlers
-    search_intents = ["SearchIntent", "PlayOneIntent", "PlaylistIntent", "SearchMyPlaylistsIntent", "ShuffleMyPlaylistsIntent", "ChannelIntent", "ShuffleIntent", "ShufflePlaylistIntent", "ShuffleChannelIntent", "PlayMyLatestVideoIntent"]
+    search_intents = ["SearchIntent", "PlayOneIntent", "PlaylistIntent", "SearchMySavedPlaylistsIntent", "SearchMyPlaylistsIntent", "ShuffleMyPlaylistsIntent", "ChannelIntent", "ShuffleIntent", "ShufflePlaylistIntent", "ShuffleChannelIntent", "PlayMyLatestVideoIntent"]
     if intent_name in search_intents:
         return search(event)
     elif intent_name == 'NextPlaylistIntent':
@@ -581,7 +583,7 @@ def youtube_playlist_search(channel_id, pageToken=None):
 def youtube_playlist_items_search(playlist_id, pageToken=None):
     params = {}
     for kv in ([['maxResults', 50], ['playlistId', playlist_id], ['pageToken', pageToken],
-                ['part', 'snippet'], ['key', environ['DEVELOPER_KEY']]]):
+                ['part', 'snippet,status'], ['key', environ['DEVELOPER_KEY']]]):
         k = kv[0]
         v = kv[1]
         params[k] = v
@@ -642,6 +644,15 @@ def playlist_search(query, sr, do_shuffle='0'):
         shuffle(videos)
     return videos[0:50], playlist_title, sr, errorMessage
 
+def playlist_saved():
+    playlistId = 'PLARFz5ewAUyePPut7abix4iqLHwbwVsDh'
+    playlist_title = 'mix Calle 13 sus mejores canciones'
+    sr = 0
+    errorMessage = strings['noplaylistresults']
+    videos = get_videos_from_playlist(playlistId)
+    shuffle(videos)
+    logger.info('Run playlist saved: ' + playlistId)
+    return videos[0:50], playlist_title, sr, errorMessage
 
 def get_videos_from_playlist(playlist_id):
     videos = []
@@ -787,6 +798,7 @@ def get_url_and_title_pytube(id, retry=True):
     logger.info('Getting pytube url for https://www.youtube.com/watch?v='+id)
     try:
         yt = YouTube('https://www.youtube.com/watch?v='+id, proxies=proxy_list)
+        yt = yt.streams
     except LiveStreamError:
         logger.info(id+' is a live video')
         return get_live_video_url_and_title(id)
@@ -802,9 +814,9 @@ def get_url_and_title_pytube(id, retry=True):
         logger.info('Unable to get URL for '+id)
         return None, None
     if video_or_audio[1] == 'video':
-        first_stream = yt.streams.filter(progressive=True).first()
+        first_stream = yt.filter(progressive=True).first()
     else:
-        first_stream = yt.streams.filter(only_audio=True, subtype='mp4').first()
+        first_stream = yt.filter(only_audio=True, subtype='mp4').first()
     logger.info(first_stream.url)
     return first_stream.url, first_stream.title
 
@@ -904,6 +916,9 @@ def search(event):
         if intent_name == "PlaylistIntent" or intent_name == "ShufflePlaylistIntent" or intent_name == "NextPlaylistIntent":
             videos, playlist_title, playlist['sr'], errorMessage = playlist_search(query, sr, playlist['s'])
             playlist_channel_video = strings['playlist']
+        elif intent_name == "SearchMySavedPlaylistsIntent":
+            videos, playlist_title, playlist['sr'], errorMessage = playlist_saved()
+            playlist_channel_video = strings['playlist']
         elif intent_name == "SearchMyPlaylistsIntent" or intent_name == "ShuffleMyPlaylistsIntent":
             videos, playlist_title, playlist['sr'] = my_playlists_search(query, sr, playlist['s'])
             playlist_channel_video = strings['playlist']
@@ -996,10 +1011,6 @@ def play_more_like_this(event):
 
 
 def skip_action(event, skip):
-    logger.info("event:")
-    logger.info(event)
-    logger.info("context:")
-    logger.info(event['context'])
     should_end_session = True
     current_token = event['context']['AudioPlayer']['token']
     next_url, next_token, title = get_next_url_and_token(current_token, skip)
@@ -1293,11 +1304,3 @@ def failed(event):
     if title is None:
         return do_nothing()
     return build_response(build_audio_enqueue_response(should_end_session, next_url, current_token, next_token, playBehavior))
-
-
-def skill_expired():
-    speech_output = '<speak><voice name="Brian"><prosody rate="medium">'
-    speech_output += 'Hi there, this is the developer. Unfortunately your patreon subscription has expired. '
-    speech_output += 'If you would like to continue using this skill, please go to patreon.com/alexayoutube to renew your subscription. '
-    speech_output += '</prosody></voice></speak> '
-    return build_response(build_cardless_speechlet_response(speech_output, '', True, 'SSML'))
