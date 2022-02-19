@@ -22,9 +22,6 @@ find . -type d -name __pycache__ -exec rm -rf {} \;
 find . -type f -name *.py[cod] -exec rm -rf {} \;
 find . -type f -name *\$py.class -exec rm -rf {} \;
 find . -type f -name *.zip -exec rm -rf {} \;
-mkdir -p lambda
-cp -r * lambda
-zip -r lambda.zip lambda
-rm -rf lambda
+zip -r lambda_function.zip *
 ```
 * Create a lambda function uploading the `.zip` file from previous step
